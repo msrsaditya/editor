@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/dracula.min.css">
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.27.4/full/pyodide.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'JetBrains Mono', monospace;
+            background-color: #282a36;
+            color: #f8f8f2;
+        }
+        
+        .container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+        }
+        
+        .divider {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 3px;
+            height: 100%;
+            background-color: #44475a;
+            cursor: ew-resize;
+            transform: translateX(-50%);
+            z-index: 10;
+            transition: background-color 0.2s;
+        }
+        
+        .divider:hover, .divider.dragging {
+            background-color: #bd93f9;
+            width: 5px;
+        }
+
+        .panel {
+            height: 100%;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        .left-panel {
+            background-color: #282a36;
+            width: 50%;
+        }
+
+        .right-panel {
+            background-color: #1e1f29;
+            width: 50%;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        .CodeMirror {
+            height: 100%;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 18px;
+            line-height: 1.5;
+            background-color: #282a36 !important;
+        }
+
+        .cm-s-dracula.CodeMirror {
+            background-color: #282a36 !important;
+        }
+
+        .editor-container {
+            height: 100%;
+        }
+
+        #output {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 18px;
+            line-height: 1.5;
+            color: #f8f8f2;
+            background-color: #1e1f29;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            padding: 10px;
+            height: 100%;
+            box-sizing: border-box;
+            scroll-behavior: smooth;
+        }
+
+        .loading {
+            color: #8be9fd;
+            font-style: italic;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(189, 147, 249, 0.5);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(189, 147, 249, 0.8);
+        }
+
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(189, 147, 249, 0.5) transparent;
+        }
+        
+        #file-input {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="panel left-panel" id="left-panel">
+            <div class="editor-container">
+                <textarea id="code-editor"></textarea>
+            </div>
+        </div>
+        <div class="divider" id="divider"></div>
+        <div class="panel right-panel" id="right-panel">
+            <div id="output" tabindex="0"></div>
+        </div>
+    </div>
+    
+    <input type="file" id="file-input" accept=".py">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/comment/comment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/hint/show-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/hint/anyword-hint.min.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            function setupTabNumbering() {
+                if (!localStorage.getItem('editorTabCount')) {
+                    localStorage.setItem('editorTabCount', '0');
+                }
+                const tabId = Date.now().toString();
+                localStorage.setItem(`editorTab_${tabId}`, 'active');
+                function updateTabTitle() {
+                    const activeTabs = [];
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if (key.startsWith('editorTab_') && localStorage.getItem(key) === 'active') {
+                            activeTabs.push(key);
+                        }
+                    }
+                    const now = Date.now();
+                    activeTabs.forEach(tab => {
+                        const tabTime = parseInt(tab.split('_')[1]);
+                        if (now - tabTime > 86400000) {
+                            localStorage.removeItem(tab);
+                        }
+                    });
+                    if (activeTabs.length <= 1) {
+                        document.title = "Editor";
+                    } else {
+                        activeTabs.sort((a, b) => {
+                            return parseInt(a.split('_')[1]) - parseInt(b.split('_')[1]);
+                        });
+                        const position = activeTabs.indexOf(`editorTab_${tabId}`) + 1;
+                        document.title = `Editor ${position}`;
+                    }
+                }
+                window.addEventListener('storage', (e) => {
+                    if (e.key && (e.key === 'editorTabCount' || e.key.startsWith('editorTab_'))) {
+                        updateTabTitle();
+                    }
+                });
+                updateTabTitle();
+                window.addEventListener('beforeunload', () => {
+                    localStorage.removeItem(`editorTab_${tabId}`);
+                    updateTabTitle();
+                });
+                setInterval(updateTabTitle, 5000);
+            }
+            
+            setupTabNumbering();
+            
+            const editor = CodeMirror.fromTextArea(document.getElementById('code-editor'), {
+                mode: 'python',
+                theme: 'dracula',
+                lineNumbers: true,
+                indentUnit: 4,
+                smartIndent: true,
+                indentWithTabs: false,
+                lineWrapping: true,
+                matchBrackets: true,
+                autoCloseBrackets: true,
+                extraKeys: {
+                    "Tab": function(cm) {
+                        if (cm.somethingSelected()) {
+                            cm.indentSelection("add");
+                        } else {
+                            cm.replaceSelection("    ", "end");
+                        }
+                    },
+                    "Ctrl-Enter": runCode,
+                    "Cmd-Enter": runCode,
+                    "Backspace": function(cm) {
+                        const cursor = cm.getCursor();
+                        const line = cm.getLine(cursor.line);
+                        const cursorPos = cursor.ch;
+                        if (cursorPos > 0) {
+                            const beforeCursor = line.substring(0, cursorPos);
+                            const isAllSpaces = /^\s*$/.test(beforeCursor);
+                            if (isAllSpaces && (cursorPos % 4 === 0) && cursorPos >= 4) {
+                                cm.replaceRange("", 
+                                    {line: cursor.line, ch: cursorPos - 4}, 
+                                    {line: cursor.line, ch: cursorPos}
+                                );
+                                return;
+                            }
+                        }
+                        CodeMirror.commands.delCharBefore(cm);
+                    }
+                }
+            });
+
+            editor.setValue("print(\"Hello, World!\")");
+            const lastLineNumber = editor.lineCount() - 1;
+            const lastLine = editor.getLine(lastLineNumber);
+            editor.setCursor({line: lastLineNumber, ch: lastLine.length});
+
+            const divider = document.getElementById('divider');
+            const leftPanel = document.getElementById('left-panel');
+            const rightPanel = document.getElementById('right-panel');
+            const container = document.querySelector('.container');
+            const output = document.getElementById('output');
+            const fileInput = document.getElementById('file-input');
+            
+            let isDragging = false;
+            let pyodide = null;
+            let currentFileName = "untitled.py";
+
+            output.addEventListener('keydown', (e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const range = document.createRange();
+                    range.selectNodeContents(output);
+                    const selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+            });
+
+            async function setupPyodide() {
+                try {
+                    output.innerHTML = '<span class="loading">Loading...</span>';
+                    pyodide = await loadPyodide();
+                    output.innerHTML = '';
+                    await pyodide.runPythonAsync(`
+                        import sys
+                        from pyodide.ffi import to_js
+                        
+                        class StdoutCatcher:
+                            def __init__(self):
+                                self.output = ""
+                            
+                            def write(self, text):
+                                self.output += text
+                            
+                            def flush(self):
+                                pass
+                        
+                        sys.stdout = StdoutCatcher()
+                        sys.stderr = StdoutCatcher()
+                    `);
+                    runCode();
+                } catch (error) {
+                    output.innerHTML = `<span style="color: #ff5555">Error initializing Python: ${error.message}</span>`;
+                    console.error("Pyodide initialization failed:", error);
+                }
+            }
+
+            setupPyodide();
+
+            async function runCode() {
+                if (!pyodide) {
+                    output.innerHTML = '<span style="color: #ff5555">Python interpreter not ready yet. Please wait...</span>';
+                    return;
+                }
+                
+                const code = editor.getValue();
+                output.innerHTML = '<span class="loading">Running...</span>';
+                
+                try {
+                    await pyodide.runPythonAsync(`
+                        sys.stdout.output = ""
+                        sys.stderr.output = ""
+                    `);
+                    await pyodide.runPythonAsync(code);
+                    const stdout = await pyodide.runPythonAsync(`sys.stdout.output`);
+                    const stderr = await pyodide.runPythonAsync(`sys.stderr.output`);
+                    
+                    if (stderr) {
+                        output.innerHTML = `<span style="color: #ff5555">${stderr}</span>`;
+                    } else {
+                        let outputContent = '';
+                        if (stdout) {
+                            outputContent += stdout.replace(/\n/g, '<br>');
+                        } else {
+                            outputContent += '<span style="color: #6272a4">No output</span>';
+                        }
+                        output.innerHTML = outputContent;
+                    }
+                    output.scrollTop = output.scrollHeight;
+                } catch (error) {
+                    output.innerHTML = `<span style="color: #ff5555">Error: ${error.message}</span>`;
+                    try {
+                        const pyError = await pyodide.runPythonAsync(`sys.stderr.output`);
+                        if (pyError) {
+                            output.innerHTML = `<span style="color: #ff5555">${pyError.replace(/\n/g, '<br>')}</span>`;
+                        }
+                    } catch (e) {
+                        console.error("Failed to get Python error details:", e);
+                    }
+                    console.error("Python execution error:", error);
+                    output.scrollTop = output.scrollHeight;
+                }
+            }
+
+            function importCode() {
+                fileInput.click();
+            }
+
+            fileInput.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                if (file.name.endsWith('.py')) {
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        editor.setValue(event.target.result);
+                        currentFileName = file.name;
+                    };
+                    reader.onerror = function() {
+                        console.error('Error reading file');
+                    };
+                    reader.readAsText(file);
+                } else {
+                    console.error('Not a Python file');
+                }
+                fileInput.value = '';
+            });
+
+            function exportCode() {
+                const code = editor.getValue();
+                const blob = new Blob([code], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = currentFileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+
+            divider.addEventListener('mousedown', startDrag);
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', endDrag);
+            divider.addEventListener('touchstart', startDrag);
+            document.addEventListener('touchmove', drag);
+            document.addEventListener('touchend', endDrag);
+
+            function startDrag(e) {
+                isDragging = true;
+                divider.classList.add('dragging');
+                e.preventDefault();
+            }
+
+            function drag(e) {
+                if (!isDragging) return;
+                const containerRect = container.getBoundingClientRect();
+                const containerWidth = containerRect.width;
+                const clientX = e.clientX || e.touches[0].clientX;
+                const posX = clientX - containerRect.left;
+                const boundedPosX = Math.max(0, Math.min(posX, containerWidth));
+                const leftPercentage = (boundedPosX / containerWidth) * 100;
+                const rightPercentage = 100 - leftPercentage;
+                leftPanel.style.width = `${leftPercentage}%`;
+                rightPanel.style.width = `${rightPercentage}%`;
+                divider.style.left = `${leftPercentage}%`;
+                editor.refresh();
+            }
+
+            function endDrag() {
+                if (isDragging) {
+                    isDragging = false;
+                    divider.classList.remove('dragging');
+                }
+            }
+
+            window.addEventListener('resize', () => {
+                editor.refresh();
+            });
+            
+            document.addEventListener('keydown', (e) => {
+                if (e.metaKey || e.ctrlKey) {
+                    if (e.key === 's') {
+                        e.preventDefault();
+                        exportCode();
+                        return;
+                    } else if (e.key === 'o') {
+                        e.preventDefault();
+                        importCode();
+                        return;
+                    } else if (e.key === 'k') {
+                        e.preventDefault();
+                        window.open(window.location.href, '_blank');
+                        return;
+                    }
+                    const containerRect = container.getBoundingClientRect();
+                    const containerWidth = containerRect.width;
+                    let currentLeftWidth = leftPanel.getBoundingClientRect().width;
+                    let currentPercentage = (currentLeftWidth / containerWidth) * 100;
+                    if (e.key === 'ArrowLeft') {
+                        e.preventDefault();
+                        currentPercentage = Math.max(currentPercentage - 5, 0);
+                    } else if (e.key === 'ArrowRight') {
+                        e.preventDefault();
+                        currentPercentage = Math.min(currentPercentage + 5, 100);
+                    } else {
+                        return;
+                    }
+                    leftPanel.style.width = `${currentPercentage}%`;
+                    rightPanel.style.width = `${100 - currentPercentage}%`;
+                    divider.style.left = `${currentPercentage}%`;
+                    editor.refresh();
+                }
+            });
+            
+            editor.focus();
+        });
+    </script>
+</body>
+</html>
