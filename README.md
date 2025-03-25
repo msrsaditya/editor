@@ -28,10 +28,10 @@ After trying out virtually every online python interepreter, (and not liking any
 
 # Usage
 
-To install any (supported) libraries:
+To install any (supported) packages, simply use micropip (python's pip equivalent):
 
 ```python
-await pyodide_js.loadPackage("<library_name>")
+await micropip.install("<package_name>")
 ```
 
 ## Acknowledgments
