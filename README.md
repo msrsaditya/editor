@@ -33,6 +33,7 @@ To install any (supported) packages, simply use micropip (python's pip equivalen
 ```python
 await micropip.install("<package_name>")
 ```
+The packages installed via micropip are stored in the in‐memory filesystem of your Pyodide session, so they remain available but not persisted across browser reloads or restarts. They are ephemeral, and you need to reinstall them every time you start a new session.
 
 ## Acknowledgments
 
