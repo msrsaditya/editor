@@ -28,12 +28,19 @@ After trying out virtually every online python interepreter, (and not liking any
 
 # Usage
 
-To install any (supported) packages, simply use micropip (python's pip equivalent):
+To install any ([supported](https://pyodide.org/en/stable/#what-is-pyodide)) packages, simply add this line above your code:
 
 ```python
 await micropip.install("<package_name>")
 ```
-The packages installed via micropip are stored in the in‐memory filesystem of your Pyodide session, so they remain available but not persisted across browser reloads or restarts. They are ephemeral, and you need to reinstall them every time you start a new session.
+For example, to install pandas package you need to run:
+
+```python
+await micropip.install("pandas")
+# write your pandas code here
+```
+
+The packages installed via micropip are stored in the in‐memory filesystem of your Pyodide session, so they remain available but not persisted across browser reloads or restarts. They are ephemeral, and you need to reinstall them every time your browser reloads. This is a feature not a bug.
 
 ## Acknowledgments
 
