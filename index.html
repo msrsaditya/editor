@@ -272,6 +272,7 @@
                     await pyodide.loadPackage("micropip");
                     output.innerHTML = '';
                     await pyodide.runPythonAsync(`
+                        import micropip
                         import sys
                         from pyodide.ffi import to_js
                         
