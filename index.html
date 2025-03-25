@@ -269,6 +269,7 @@
                 try {
                     output.innerHTML = '<span class="loading">Loading...</span>';
                     pyodide = await loadPyodide();
+                    await pyodide.loadPackage("micropip");
                     output.innerHTML = '';
                     await pyodide.runPythonAsync(`
                         import sys
