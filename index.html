@@ -287,7 +287,11 @@
                 <h3>Miscellaneous</h3>
                 <div class="shortcut-item">
                     <span>Help</span>
-                    <span class="shortcut-keys">⌘ + I</span>
+                    <span class="shortcut-keys">⌘ + /</span>
+                </div>
+                <div class="shortcut-item">
+                    <span>Close Help</span>
+                    <span class="shortcut-keys">ESC</span>
                 </div>
             </div>
 
@@ -596,7 +600,7 @@
             });
             
             document.addEventListener('keydown', (e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') {
+                if ((e.metaKey || e.ctrlKey) &&  e.code === 'Slash') {
                     e.preventDefault();
                     toggleShortcuts();
                 }
