@@ -1,0 +1,9 @@
+perfect replacement for jn, does everything (useful) it does
+remove unnecessary stuff from code -- read and understand code
+
+get perfect 100 on lighthouse
+improve performance -- everything should work at lightspeed, analyze critical bottlenecks
+
+Matplotlib not working
+We cannot work with local files/paths
+No interactive console (input() may not work as expected)
